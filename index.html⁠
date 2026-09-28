@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Studio Fio Certo — Agendamento</title>
+<title>Barbearia Di'Quebrada — Agendamento</title>
 <style>
 :root{--bg:#ECE9F1;--card:#fff;--ink:#2A1B3D;--mute:#6B607A;--line:#D9D3E3;--acc:#2A1B3D;--acc-ink:#fff;--pop:#7FD1B9;--pop-ink:#123;--danger:#C0392B}
 @media (prefers-color-scheme:dark){:root{--bg:#181120;--card:#241A30;--ink:#F1ECF7;--mute:#A79CB8;--line:#3A2E4A;--acc:#7FD1B9;--acc-ink:#123;--danger:#E74C3C}}
@@ -29,13 +29,14 @@ a.wa, a.cal, button.del-btn{display:block;text-align:center;text-decoration:none
 a.wa{background:var(--pop);color:var(--pop-ink)}
 a.cal{background:var(--acc);color:var(--acc-ink)}
 button.del-btn{background:var(--danger);color:#fff}
-.btn-sm-del{background:var(--danger);color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:bold;margin-top:4px}
 .err{color:var(--danger);font-size:14px;margin:0}
 .admin-btn{background:none;border:none;color:var(--mute);font-size:12px;cursor:pointer;text-decoration:underline}
-.table-wrapper{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:10px;border-radius:8px;border:1px solid var(--line)}
-table{width:100%;border-collapse:collapse;background:var(--card);min-width:500px}
-th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
-th{background:var(--acc);color:var(--acc-ink)}
+
+.admin-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px;display:flex;flex-direction:column;gap:6px}
+.admin-card-head{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:6px;font-weight:bold}
+.admin-card-body{font-size:14px;color:var(--mute)}
+.admin-card-body b{color:var(--ink)}
+.btn-card-del{background:var(--danger);color:#fff;border:none;padding:8px;border-radius:8px;cursor:pointer;font-weight:bold;margin-top:6px;font-size:13px}
 </style>
 <!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -45,7 +46,7 @@ th{background:var(--acc);color:var(--acc-ink)}
 
 <header>
   <div>
-    <b>Studio Fio Certo</b>
+    <b>Barbearia Di'Quebrada</b>
     <div>Assistente de agendamento</div>
   </div>
   <button class="admin-btn" onclick="openAdmin()">Área do Admin</button>
@@ -98,7 +99,7 @@ function askMulti(fields,cb){
 function start(){
   S={};
   log.innerHTML = "";
-  say("Oi! Eu sou o assistente do Studio Fio Certo. O que gostaria de fazer?");
+  say("Oi! Eu sou o assistente da Barbearia Di'Quebrada. O que gostaria de fazer?");
   chips([
     {t:"Agendar novo horário", act:"new"},
     {t:"Cancelar meu agendamento", act:"cancel"}
@@ -115,10 +116,12 @@ function selectService(){
 
 function pickDay(){
   say("Ótimo, "+S.svc[0]+". Para qual dia?");
-  var days=[],base=new Date();base.setHours(0,0,0,0);
-  for(var k=0;k<14&&days.length<10;k++){
-    var d=new Date(base.getTime()+k*86400000);
-    if(d.getDay()!==0)days.push(d)
+  var days=[], base = new Date();
+  base.setHours(0,0,0,0);
+
+  for(var k=0; k<14 && days.length<10; k++){
+    var d = new Date(base.getTime() + k*86400000);
+    if(d.getDay() !== 0) days.push(d); // Ignora domingos
   }
   chips(days.map(function(d){return{t:lbl(d),d:d}}),function(it){S.date=it.d;pickTime()})
 }
@@ -193,8 +196,8 @@ function saveAndFinish(){
       var dtEnd = new Date(dtStart.getTime() + S.svc[2]*60000);
       
       var fmt = function(d){ return d.toISOString().replace(/-|:|\.\d+/g, ""); };
-      var icsData = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:" + S.svc[0] + " - Studio Fio Certo\n" +
-                    "DESCRIPTION:Seu agendamento no Studio Fio Certo\n" +
+      var icsData = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:" + S.svc[0] + " - Barbearia Di'Quebrada\n" +
+                    "DESCRIPTION:Seu agendamento na Barbearia Di'Quebrada\n" +
                     "DTSTART:" + fmt(dtStart) + "\nDTEND:" + fmt(dtEnd) + "\n" +
                     "BEGIN:VALARM\nTRIGGER:-PT30M\nACTION:DISPLAY\nDESCRIPTION:Lembrete de Agendamento\nEND:VALARM\n" +
                     "END:VEVENT\nEND:VCALENDAR";
@@ -213,7 +216,7 @@ function saveAndFinish(){
       var aCal = document.createElement("a");
       aCal.className = "cal";
       aCal.href = icsUrl;
-      aCal.download = "agendamento-fio-certo.ics";
+      aCal.download = "agendamento-di-quebrada.ics";
       aCal.textContent = "📅 Salvar na minha Agenda (Com Lembrete)";
       ctl.appendChild(aCal);
 
@@ -287,15 +290,22 @@ function openAdmin(){
       return;
     }
     
-    var html = "<h3>Agendamentos Registrados</h3><p style='font-size:12px;color:var(--mute)'>Arraste para o lado na tabela para ver ações ou use o botão vermelho abaixo do horário.</p><div class='table-wrapper'><table><tr><th>Data/Hora</th><th>Cliente</th><th>Contato</th><th>Serviço</th><th>Ação</th></tr>";
+    var html = "<h3>Agendamentos Registrados</h3>";
     for(var day in data){
       for(var time in data[day]){
         var item = data[day][time];
-        var btnHtml = "<button class='btn-sm-del' onclick=\"deleteBooking('"+day+"','"+time+"',false)\">Excluir</button>";
-        html += "<tr><td><b>"+item.data+" às "+item.hora+"</b><br>"+btnHtml+"</td><td>"+item.nome+"</td><td>"+item.tel+"<br><small>"+item.email+"</small></td><td>"+item.servico+"</td><td>"+btnHtml+"</td></tr>";
+        html += "<div class='admin-card'>" +
+                  "<div class='admin-card-head'><span>📅 " + item.data + " às " + item.hora + "</span></div>" +
+                  "<div class='admin-card-body'>" +
+                    "<b>Cliente:</b> " + item.nome + "<br>" +
+                    "<b>Serviço:</b> " + item.servico + "<br>" +
+                    "<b>WhatsApp:</b> " + item.tel + "<br>" +
+                    "<b>E-mail:</b> " + item.email +
+                  "</div>" +
+                  "<button class='btn-card-del' onclick=\"deleteBooking('"+day+"','"+time+"',false)\">🗑️ Excluir / Cancelar</button>" +
+                "</div>";
       }
     }
-    html += "</table></div>";
     log.innerHTML = html;
   });
 }
