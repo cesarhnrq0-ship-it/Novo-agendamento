@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Studio Fio Certo — Agendamento</title>
 <style>
-:root{--bg:#ECE9F1;--card:#fff;--ink:#2A1B3D;--mute:#6B607A;--line:#D9D3E3;--acc:#2A1B3D;--acc-ink:#fff;--pop:#7FD1B9;--pop-ink:#123}
-@media (prefers-color-scheme:dark){:root{--bg:#181120;--card:#241A30;--ink:#F1ECF7;--mute:#A79CB8;--line:#3A2E4A;--acc:#7FD1B9;--acc-ink:#123}}
+:root{--bg:#ECE9F1;--card:#fff;--ink:#2A1B3D;--mute:#6B607A;--line:#D9D3E3;--acc:#2A1B3D;--acc-ink:#fff;--pop:#7FD1B9;--pop-ink:#123;--danger:#C0392B}
+@media (prefers-color-scheme:dark){:root{--bg:#181120;--card:#241A30;--ink:#F1ECF7;--mute:#A79CB8;--line:#3A2E4A;--acc:#7FD1B9;--acc-ink:#123;--danger:#E74C3C}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.45 system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;height:100vh}
 header{padding:14px 16px;border-bottom:1px solid var(--line);background:var(--card);display:flex;justify-content:space-between;align-items:center}
@@ -25,10 +25,12 @@ button,input{font:inherit}
 form{display:flex;flex-direction:column;gap:8px}
 input{color:var(--ink);background:transparent;border:1.5px solid var(--line);border-radius:10px;padding:11px}
 .send{background:var(--acc);color:var(--acc-ink);border:0;border-radius:10px;padding:11px;font-weight:600;cursor:pointer}
-a.wa, a.cal{display:block;text-align:center;text-decoration:none;font-weight:600;padding:13px;border-radius:12px;margin-top:8px}
+a.wa, a.cal, button.del-btn{display:block;text-align:center;text-decoration:none;font-weight:600;padding:12px;border-radius:10px;margin-top:8px;width:100%;border:none;font-size:14px;cursor:pointer}
 a.wa{background:var(--pop);color:var(--pop-ink)}
 a.cal{background:var(--acc);color:var(--acc-ink)}
-.err{color:#C0392B;font-size:14px;margin:0}
+button.del-btn{background:var(--danger);color:#fff}
+.btn-sm-del{background:var(--danger);color:#fff;border:none;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px}
+.err{color:var(--danger);font-size:14px;margin:0}
 .admin-btn{background:none;border:none;color:var(--mute);font-size:12px;cursor:pointer;text-decoration:underline}
 table{width:100%;border-collapse:collapse;margin-top:10px;background:var(--card);border-radius:8px;overflow:hidden}
 th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
@@ -95,7 +97,18 @@ function askMulti(fields,cb){
 function start(){
   S={};
   log.innerHTML = "";
-  say("Oi! Eu sou o assistente do Studio Fio Certo. Qual serviço você quer?");
+  say("Oi! Eu sou o assistente do Studio Fio Certo. O que gostaria de fazer?");
+  chips([
+    {t:"Agendar novo horário", act:"new"},
+    {t:"Cancelar meu agendamento", act:"cancel"}
+  ], function(it){
+    if(it.act === "new") selectService();
+    else cancelByClient();
+  });
+}
+
+function selectService(){
+  say("Qual serviço você quer?");
   chips(SV.map(function(s,i){return{t:s[0]+" · R$ "+s[1],i:i}}),function(it){S.svc=SV[it.i];pickDay()});
 }
 
@@ -173,7 +186,6 @@ function saveAndFinish(){
       
       var m="Olá! Agendei pelo site:\n\nNome: "+S.nome+"\nE-mail: "+S.email+"\nServiço: "+S.svc[0]+"\nDia: "+lbl(S.date)+" às "+S.time;
       
-      // Gerar ficheiro de lembrete (.ics) para o calendário do telemóvel do cliente
       var h = parseInt(S.time.split(":")[0]);
       var min = parseInt(S.time.split(":")[1]);
       var dtStart = new Date(S.date.getFullYear(), S.date.getMonth(), S.date.getDate(), h, min);
@@ -203,10 +215,66 @@ function saveAndFinish(){
       aCal.download = "agendamento-fio-certo.ics";
       aCal.textContent = "📅 Salvar na minha Agenda (Com Lembrete)";
       ctl.appendChild(aCal);
+
+      var btnCancel = document.createElement("button");
+      btnCancel.className = "del-btn";
+      btnCancel.textContent = "❌ Cancelar este Agendamento";
+      btnCancel.onclick = function(){ deleteBooking(dateKey, timeKey, true); };
+      ctl.appendChild(btnCancel);
     }
   });
 }
 
+// CANCELAMENTO PELO CLIENTE
+function cancelByClient(){
+  say("Para cancelar, informe o WhatsApp cadastrado:");
+  askMulti([{key:"tel", ph:"Seu WhatsApp com DDD", type:"tel"}], function(inputs){
+    var searchTel = inputs.tel.value.replace(/\D/g,"");
+    db.ref('agendamentos').once('value', function(snapshot){
+      var data = snapshot.val();
+      var found = [];
+      for(var day in data){
+        for(var time in data[day]){
+          if(data[day][time].tel === searchTel){
+            found.push({day: day, time: time, info: data[day][time]});
+          }
+        }
+      }
+      if(found.length === 0){
+        say("Nenhum agendamento encontrado para este número.");
+        chips([{t:"Tentar de novo", act:"cancel"},{t:"Início", act:"start"}], function(it){
+          if(it.act === "cancel") cancelByClient(); else start();
+        });
+      } else {
+        say("Encontramos os seguintes agendamentos:");
+        ctl.innerHTML = "";
+        found.forEach(function(item){
+          var btn = document.createElement("button");
+          btn.className = "del-btn";
+          btn.textContent = "Cancelar: " + item.info.data + " às " + item.info.hora + " (" + item.info.servico + ")";
+          btn.onclick = function(){ deleteBooking(item.day, item.time, true); };
+          ctl.appendChild(btn);
+        });
+      }
+    });
+  });
+}
+
+// FUNÇÃO DE EXCLUSÃO
+function deleteBooking(dateKey, timeKey, isClient){
+  if(confirm("Tem certeza que deseja cancelar e liberar este horário?")){
+    db.ref('agendamentos/' + dateKey + '/' + timeKey).remove(function(err){
+      if(!err){
+        alert("Agendamento cancelado com sucesso! O horário foi liberado.");
+        if(isClient) start(); else openAdmin();
+      } else {
+        alert("Erro ao cancelar. Tente novamente.");
+      }
+    });
+  }
+}
+
+// PAINEL DO ADMINISTRADOR
 function openAdmin(){
   var pass = prompt("Digite a senha do administrador:");
   if(pass !== ADMIN_PASS){ alert("Senha incorreta!"); return; }
@@ -221,11 +289,11 @@ function openAdmin(){
       return;
     }
     
-    var html = "<h3>Agendamentos Registrados</h3><table><tr><th>Data/Hora</th><th>Cliente</th><th>Contato</th><th>Serviço</th></tr>";
+    var html = "<h3>Agendamentos Registrados</h3><table><tr><th>Data/Hora</th><th>Cliente</th><th>Contato</th><th>Serviço</th><th>Ação</th></tr>";
     for(var day in data){
       for(var time in data[day]){
         var item = data[day][time];
-        html += "<tr><td>"+item.data+" às "+item.hora+"</td><td>"+item.nome+"</td><td>"+item.tel+"<br><small>"+item.email+"</small></td><td>"+item.servico+"</td></tr>";
+        html += "<tr><td>"+item.data+" às "+item.hora+"</td><td>"+item.nome+"</td><td>"+item.tel+"<br><small>"+item.email+"</small></td><td>"+item.servico+"</td><td><button class='btn-sm-del' onclick=\"deleteBooking('"+day+"','"+time+"',false)\">Excluir</button></td></tr>";
       }
     }
     html += "</table>";
