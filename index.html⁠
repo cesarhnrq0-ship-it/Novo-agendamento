@@ -29,10 +29,11 @@ a.wa, a.cal, button.del-btn{display:block;text-align:center;text-decoration:none
 a.wa{background:var(--pop);color:var(--pop-ink)}
 a.cal{background:var(--acc);color:var(--acc-ink)}
 button.del-btn{background:var(--danger);color:#fff}
-.btn-sm-del{background:var(--danger);color:#fff;border:none;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px}
+.btn-sm-del{background:var(--danger);color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:bold;margin-top:4px}
 .err{color:var(--danger);font-size:14px;margin:0}
 .admin-btn{background:none;border:none;color:var(--mute);font-size:12px;cursor:pointer;text-decoration:underline}
-table{width:100%;border-collapse:collapse;margin-top:10px;background:var(--card);border-radius:8px;overflow:hidden}
+.table-wrapper{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:10px;border-radius:8px;border:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;background:var(--card);min-width:500px}
 th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
 th{background:var(--acc);color:var(--acc-ink)}
 </style>
@@ -225,7 +226,6 @@ function saveAndFinish(){
   });
 }
 
-// CANCELAMENTO PELO CLIENTE
 function cancelByClient(){
   say("Para cancelar, informe o WhatsApp cadastrado:");
   askMulti([{key:"tel", ph:"Seu WhatsApp com DDD", type:"tel"}], function(inputs){
@@ -260,12 +260,11 @@ function cancelByClient(){
   });
 }
 
-// FUNÇÃO DE EXCLUSÃO
 function deleteBooking(dateKey, timeKey, isClient){
   if(confirm("Tem certeza que deseja cancelar e liberar este horário?")){
     db.ref('agendamentos/' + dateKey + '/' + timeKey).remove(function(err){
       if(!err){
-        alert("Agendamento cancelado com sucesso! O horário foi liberado.");
+        alert("Agendamento cancelado com sucesso!");
         if(isClient) start(); else openAdmin();
       } else {
         alert("Erro ao cancelar. Tente novamente.");
@@ -274,7 +273,6 @@ function deleteBooking(dateKey, timeKey, isClient){
   }
 }
 
-// PAINEL DO ADMINISTRADOR
 function openAdmin(){
   var pass = prompt("Digite a senha do administrador:");
   if(pass !== ADMIN_PASS){ alert("Senha incorreta!"); return; }
@@ -289,14 +287,15 @@ function openAdmin(){
       return;
     }
     
-    var html = "<h3>Agendamentos Registrados</h3><table><tr><th>Data/Hora</th><th>Cliente</th><th>Contato</th><th>Serviço</th><th>Ação</th></tr>";
+    var html = "<h3>Agendamentos Registrados</h3><p style='font-size:12px;color:var(--mute)'>Arraste para o lado na tabela para ver ações ou use o botão vermelho abaixo do horário.</p><div class='table-wrapper'><table><tr><th>Data/Hora</th><th>Cliente</th><th>Contato</th><th>Serviço</th><th>Ação</th></tr>";
     for(var day in data){
       for(var time in data[day]){
         var item = data[day][time];
-        html += "<tr><td>"+item.data+" às "+item.hora+"</td><td>"+item.nome+"</td><td>"+item.tel+"<br><small>"+item.email+"</small></td><td>"+item.servico+"</td><td><button class='btn-sm-del' onclick=\"deleteBooking('"+day+"','"+time+"',false)\">Excluir</button></td></tr>";
+        var btnHtml = "<button class='btn-sm-del' onclick=\"deleteBooking('"+day+"','"+time+"',false)\">Excluir</button>";
+        html += "<tr><td><b>"+item.data+" às "+item.hora+"</b><br>"+btnHtml+"</td><td>"+item.nome+"</td><td>"+item.tel+"<br><small>"+item.email+"</small></td><td>"+item.servico+"</td><td>"+btnHtml+"</td></tr>";
       }
     }
-    html += "</table>";
+    html += "</table></div>";
     log.innerHTML = html;
   });
 }
