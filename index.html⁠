@@ -25,7 +25,9 @@ button,input{font:inherit}
 form{display:flex;flex-direction:column;gap:8px}
 input{color:var(--ink);background:transparent;border:1.5px solid var(--line);border-radius:10px;padding:11px}
 .send{background:var(--acc);color:var(--acc-ink);border:0;border-radius:10px;padding:11px;font-weight:600;cursor:pointer}
-a.wa{display:block;text-align:center;background:var(--pop);color:var(--pop-ink);text-decoration:none;font-weight:600;padding:13px;border-radius:12px}
+a.wa, a.cal{display:block;text-align:center;text-decoration:none;font-weight:600;padding:13px;border-radius:12px;margin-top:8px}
+a.wa{background:var(--pop);color:var(--pop-ink)}
+a.cal{background:var(--acc);color:var(--acc-ink)}
 .err{color:#C0392B;font-size:14px;margin:0}
 .admin-btn{background:none;border:none;color:var(--mute);font-size:12px;cursor:pointer;text-decoration:underline}
 table{width:100%;border-collapse:collapse;margin-top:10px;background:var(--card);border-radius:8px;overflow:hidden}
@@ -50,7 +52,6 @@ th{background:var(--acc);color:var(--acc-ink)}
 <div id="dock"><div id="ctl"></div></div>
 
 <script>
-// Banco de Dados em nuvem ativo para sincronizar agendamentos
 const firebaseConfig = {
   databaseURL: "https://agendamento-fio-certo-default-rtdb.firebaseio.com/"
 };
@@ -58,7 +59,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 var SALON = "5511961604656";
-var ADMIN_PASS = "123456"; // Senha do Administrador
+var ADMIN_PASS = "123456";
 var SV = [["Corte masculino",45,40],["Corte feminino",90,60],["Barba",30,30],["Corte + barba",70,70],["Escova",60,45],["Coloração",150,120]];
 var DOW = ["dom","seg","ter","qua","qui","sex","sáb"], MES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
 var S = {}; 
@@ -111,7 +112,6 @@ function pickDay(){
 function pickTime(){
   var d=S.date, dateKey=iso(d), end=d.getDay()===6?15:18, now=new Date();
   
-  // Consulta a nuvem para checar horários já ocupados nesta data
   db.ref('agendamentos/' + dateKey).once('value', function(snapshot){
     var dayBookings = snapshot.val() || {};
     var items = [];
@@ -119,7 +119,7 @@ function pickTime(){
     for(var m=9*60;m<end*60;m+=30){
       var t=String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
       var past=iso(now)===dateKey&&m<=(now.getHours()*60+now.getMinutes());
-      var isTaken = dayBookings[t.replace(":","")] !== undefined; // Se existe no banco, está bloqueado
+      var isTaken = dayBookings[t.replace(":","")] !== undefined;
       
       items.push({t:t, off: past || isTaken});
     }
@@ -159,7 +159,6 @@ function saveAndFinish(){
   var dateKey = iso(S.date);
   var timeKey = S.time.replace(":","");
   
-  // Salva no banco de dados da nuvem para bloquear instantaneamente para outros clientes
   db.ref('agendamentos/' + dateKey + '/' + timeKey).set({
     nome: S.nome,
     email: S.email,
@@ -170,15 +169,44 @@ function saveAndFinish(){
     hora: S.time
   }, function(err){
     if(!err){
-      say("Agendamento concluído! O horário foi reservado e bloqueado.");
+      say("Agendamento concluído! O horário foi reservado e bloqueado no sistema.");
+      
       var m="Olá! Agendei pelo site:\n\nNome: "+S.nome+"\nE-mail: "+S.email+"\nServiço: "+S.svc[0]+"\nDia: "+lbl(S.date)+" às "+S.time;
-      ctl.innerHTML="";var a=document.createElement("a");a.className="wa";a.target="_blank";
-      a.href="https://wa.me/"+SALON+"?text="+encodeURIComponent(m);a.textContent="Enviar confirmação no WhatsApp";ctl.appendChild(a);
+      
+      // Gerar ficheiro de lembrete (.ics) para o calendário do telemóvel do cliente
+      var h = parseInt(S.time.split(":")[0]);
+      var min = parseInt(S.time.split(":")[1]);
+      var dtStart = new Date(S.date.getFullYear(), S.date.getMonth(), S.date.getDate(), h, min);
+      var dtEnd = new Date(dtStart.getTime() + S.svc[2]*60000);
+      
+      var fmt = function(d){ return d.toISOString().replace(/-|:|\.\d+/g, ""); };
+      var icsData = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:" + S.svc[0] + " - Studio Fio Certo\n" +
+                    "DESCRIPTION:Seu agendamento no Studio Fio Certo\n" +
+                    "DTSTART:" + fmt(dtStart) + "\nDTEND:" + fmt(dtEnd) + "\n" +
+                    "BEGIN:VALARM\nTRIGGER:-PT30M\nACTION:DISPLAY\nDESCRIPTION:Lembrete de Agendamento\nEND:VALARM\n" +
+                    "END:VEVENT\nEND:VCALENDAR";
+      
+      var icsBlob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
+      var icsUrl = URL.createObjectURL(icsBlob);
+
+      ctl.innerHTML="";
+      
+      var aWa = document.createElement("a");
+      aWa.className = "wa"; aWa.target = "_blank";
+      aWa.href = "https://wa.me/" + SALON + "?text=" + encodeURIComponent(m);
+      aWa.textContent = "Enviar confirmação no WhatsApp";
+      ctl.appendChild(aWa);
+
+      var aCal = document.createElement("a");
+      aCal.className = "cal";
+      aCal.href = icsUrl;
+      aCal.download = "agendamento-fio-certo.ics";
+      aCal.textContent = "📅 Salvar na minha Agenda (Com Lembrete)";
+      ctl.appendChild(aCal);
     }
   });
 }
 
-// PAINEL DO ADMINISTRADOR
 function openAdmin(){
   var pass = prompt("Digite a senha do administrador:");
   if(pass !== ADMIN_PASS){ alert("Senha incorreta!"); return; }
@@ -186,7 +214,6 @@ function openAdmin(){
   log.innerHTML = "<h3>Painel do Administrador</h3><p>Carregando dados...</p>";
   ctl.innerHTML = "<button class='send' onclick='start()'>Voltar ao Agendamento</button>";
 
-  // Busca todos os agendamentos registrados no banco de dados
   db.ref('agendamentos').once('value', function(snapshot){
     var data = snapshot.val();
     if(!data){
