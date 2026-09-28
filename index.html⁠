@@ -32,6 +32,9 @@ table{width:100%;border-collapse:collapse;margin-top:10px;background:var(--card)
 th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
 th{background:var(--acc);color:var(--acc-ink)}
 </style>
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -47,24 +50,19 @@ th{background:var(--acc);color:var(--acc-ink)}
 <div id="dock"><div id="ctl"></div></div>
 
 <script>
-var SALON="5511961604656";
-var ADMIN_PASS="123456"; // Senha do administrador
-var SV=[["Corte masculino",45,40],["Corte feminino",90,60],["Barba",30,30],["Corte + barba",70,70],["Escova",60,45],["Coloração",150,120]];
-var DOW=["dom","seg","ter","qua","qui","sex","sáb"],MES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
-var S={}; 
-var log=document.getElementById("log"),ctl=document.getElementById("ctl");
+// Banco de Dados em nuvem ativo para sincronizar agendamentos
+const firebaseConfig = {
+  databaseURL: "https://agendamento-fio-certo-default-rtdb.firebaseio.com/"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-// Carrega os agendamentos salvos no navegador
-function getBookings(){
-  return JSON.parse(localStorage.getItem('agendamentos_fio_certo') || '{}');
-}
-
-function saveBooking(dateKey, timeKey, bookingData){
-  var current = getBookings();
-  if(!current[dateKey]) current[dateKey] = {};
-  current[dateKey][timeKey] = bookingData;
-  localStorage.setItem('agendamentos_fio_certo', JSON.stringify(current));
-}
+var SALON = "5511961604656";
+var ADMIN_PASS = "123456"; // Senha do Administrador
+var SV = [["Corte masculino",45,40],["Corte feminino",90,60],["Barba",30,30],["Corte + barba",70,70],["Escova",60,45],["Coloração",150,120]];
+var DOW = ["dom","seg","ter","qua","qui","sex","sáb"], MES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+var S = {}; 
+var log = document.getElementById("log"), ctl = document.getElementById("ctl");
 
 function say(t,who){
   var d=document.createElement("div");d.className="m "+(who||"bot");d.textContent=t;log.appendChild(d);
@@ -111,21 +109,28 @@ function pickDay(){
 }
 
 function pickTime(){
-  var d=S.date, dateKey=iso(d), end=d.getDay()===6?15:18, now=new Date(), items=[];
-  var bookings = getBookings();
-  var dayBookings = bookings[dateKey] || {};
+  var d=S.date, dateKey=iso(d), end=d.getDay()===6?15:18, now=new Date();
+  
+  // Consulta a nuvem para checar horários já ocupados nesta data
+  db.ref('agendamentos/' + dateKey).once('value', function(snapshot){
+    var dayBookings = snapshot.val() || {};
+    var items = [];
 
-  for(var m=9*60;m<end*60;m+=30){
-    var t=String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
-    var past=iso(now)===dateKey&&m<=(now.getHours()*60+now.getMinutes());
-    
-    // Verifica se já foi agendado
-    var isTaken = dayBookings[t.replace(":","")] !== undefined;
-    items.push({t:t, off: past || isTaken});
-  }
-  if(items.every(function(x){return x.off})){say("Esse dia está totalmente lotado. Vamos tentar outro?");return pickDay()}
-  say("Horários disponíveis em "+lbl(d)+":");
-  chips(items,function(it){S.time=it.t;getUserData()})
+    for(var m=9*60;m<end*60;m+=30){
+      var t=String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
+      var past=iso(now)===dateKey&&m<=(now.getHours()*60+now.getMinutes());
+      var isTaken = dayBookings[t.replace(":","")] !== undefined; // Se existe no banco, está bloqueado
+      
+      items.push({t:t, off: past || isTaken});
+    }
+
+    if(items.every(function(x){return x.off})){
+      say("Esse dia está totalmente lotado. Vamos tentar outro?");
+      return pickDay();
+    }
+    say("Horários disponíveis em "+lbl(d)+":");
+    chips(items,function(it){S.time=it.t;getUserData()});
+  });
 }
 
 function getUserData(){
@@ -154,8 +159,8 @@ function saveAndFinish(){
   var dateKey = iso(S.date);
   var timeKey = S.time.replace(":","");
   
-  // Salva e Bloqueia o Horário
-  saveBooking(dateKey, timeKey, {
+  // Salva no banco de dados da nuvem para bloquear instantaneamente para outros clientes
+  db.ref('agendamentos/' + dateKey + '/' + timeKey).set({
     nome: S.nome,
     email: S.email,
     tel: S.tel,
@@ -163,12 +168,14 @@ function saveAndFinish(){
     preco: S.svc[1],
     data: lbl(S.date),
     hora: S.time
+  }, function(err){
+    if(!err){
+      say("Agendamento concluído! O horário foi reservado e bloqueado.");
+      var m="Olá! Agendei pelo site:\n\nNome: "+S.nome+"\nE-mail: "+S.email+"\nServiço: "+S.svc[0]+"\nDia: "+lbl(S.date)+" às "+S.time;
+      ctl.innerHTML="";var a=document.createElement("a");a.className="wa";a.target="_blank";
+      a.href="https://wa.me/"+SALON+"?text="+encodeURIComponent(m);a.textContent="Enviar confirmação no WhatsApp";ctl.appendChild(a);
+    }
   });
-
-  say("Agendamento concluído! O horário foi reservado e bloqueado.");
-  var m="Olá! Agendei pelo site:\n\nNome: "+S.nome+"\nE-mail: "+S.email+"\nServiço: "+S.svc[0]+"\nDia: "+lbl(S.date)+" às "+S.time;
-  ctl.innerHTML="";var a=document.createElement("a");a.className="wa";a.target="_blank";
-  a.href="https://wa.me/"+SALON+"?text="+encodeURIComponent(m);a.textContent="Enviar confirmação no WhatsApp";ctl.appendChild(a);
 }
 
 // PAINEL DO ADMINISTRADOR
@@ -176,27 +183,27 @@ function openAdmin(){
   var pass = prompt("Digite a senha do administrador:");
   if(pass !== ADMIN_PASS){ alert("Senha incorreta!"); return; }
   
-  var data = getBookings();
+  log.innerHTML = "<h3>Painel do Administrador</h3><p>Carregando dados...</p>";
   ctl.innerHTML = "<button class='send' onclick='start()'>Voltar ao Agendamento</button>";
 
-  var html = "<h3>Painel do Administrador</h3>";
-  var count = 0;
-  var tableHtml = "<table><tr><th>Data/Hora</th><th>Cliente</th><th>Contato</th><th>Serviço</th></tr>";
-
-  for(var day in data){
-    for(var time in data[day]){
-      var item = data[day][time];
-      count++;
-      tableHtml += "<tr><td>"+item.data+" às "+item.hora+"</td><td>"+item.nome+"</td><td>"+item.tel+"<br><small>"+item.email+"</small></td><td>"+item.servico+"</td></tr>";
+  // Busca todos os agendamentos registrados no banco de dados
+  db.ref('agendamentos').once('value', function(snapshot){
+    var data = snapshot.val();
+    if(!data){
+      log.innerHTML = "<h3>Painel do Administrador</h3><p>Nenhum agendamento realizado ainda.</p>";
+      return;
     }
-  }
-  tableHtml += "</table>";
-
-  if(count === 0){
-    log.innerHTML = html + "<p>Nenhum horário agendado até o momento.</p>";
-  } else {
-    log.innerHTML = html + tableHtml;
-  }
+    
+    var html = "<h3>Agendamentos Registrados</h3><table><tr><th>Data/Hora</th><th>Cliente</th><th>Contato</th><th>Serviço</th></tr>";
+    for(var day in data){
+      for(var time in data[day]){
+        var item = data[day][time];
+        html += "<tr><td>"+item.data+" às "+item.hora+"</td><td>"+item.nome+"</td><td>"+item.tel+"<br><small>"+item.email+"</small></td><td>"+item.servico+"</td></tr>";
+      }
+    }
+    html += "</table>";
+    log.innerHTML = html;
+  });
 }
 
 start();
